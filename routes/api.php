@@ -29,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('logout', 'App\Http\Controllers\AuthController@logout');
     Route::get('profile', 'App\Http\Controllers\AuthController@profile');
     Route::post('refresh-token', 'App\Http\Controllers\AuthController@refreshToken');
+    Route::apiResource('collection', 'App\Http\Controllers\CollectionController');
 });
 
 /*
@@ -50,7 +51,6 @@ Route::post('validate-machine', 'App\Http\Controllers\MachineController@validate
 */
 
 // Collection CRUD (existing)
-Route::apiResource('collection', 'App\Http\Controllers\CollectionController');
 
 /*
 |--------------------------------------------------------------------------

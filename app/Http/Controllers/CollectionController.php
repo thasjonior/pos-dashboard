@@ -126,6 +126,8 @@ private function isSyncDataFromCollector(Request $request): bool
  */
 private function handleCollectorSyncData(Request $request)
 {
+    
+
     // Parse client information from clientName
     $clientName = $request->input('clientName', '');
     $clientInfo = $this->parseClientInfo($clientName);
@@ -326,7 +328,7 @@ private function getOrCreateClientFromSync(array $clientInfo, string $phone): ?C
  */
 private function extractMachineId(Request $request): ?int
 {
-    return 2;
+    
     // First check if machine_id is directly provided
     if ($request->has('machine_id')) {
         return $request->machine_id;

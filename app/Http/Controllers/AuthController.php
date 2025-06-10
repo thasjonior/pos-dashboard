@@ -249,4 +249,19 @@ class AuthController extends BaseController
             return $this->sendError('Failed to refresh token', [], 500);
         }
     }
+
+
+    // routes/web.php
+
+// Controller method
+public function download()
+{
+    $filePath = public_path('uploads/app-release.apk');
+    
+    if (!file_exists($filePath)) {
+        abort(404, 'File not found');
+    }
+    
+    return response()->download($filePath);
+}
 }
