@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Log;
@@ -30,6 +31,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', 'App\Http\Controllers\AuthController@profile');
     Route::post('refresh-token', 'App\Http\Controllers\AuthController@refreshToken');
     Route::apiResource('collection', 'App\Http\Controllers\CollectionController');
+});
+
+Route::prefix('dashboard')->middleware('auth:sanctum')->group(function () {
+    Route::get('/', [DashboardController::class, 'index']);
+    Route::get('/collector/{collectorId}', [DashboardController::class, 'collectorDashboard']);
+    Route::get('/summary', [DashboardController::class, 'collectionsSummary']);
 });
 
 /*
