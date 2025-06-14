@@ -2,8 +2,11 @@
 namespace App\Http\Controllers;
 
 use App\Services\BaseService;
+use App\Services\CompanyType;
+use App\Services\TimeRange;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
+
 
 class DashboardController extends Controller
 {
@@ -13,63 +16,60 @@ class DashboardController extends Controller
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function index(Request $request)
-    {
-        try {
-            // Get machine IDs from request or user's company
-            $machineIds = $this->getMachineIds($request);
-            
-            // Get date from request or use today
-            $date = $request->input('date') ? Carbon::parse($request->input('date')) : Carbon::today();
-            $yesterday = $date->copy()->subDay();
+public function index(Request $request)
+{
+    try {
+        // Get machine IDs from request or user's company
+        $machineIds = $this->getMachineIds($request);
+        
+        // Get time range from request or use today as default
+        $timeParam = $request->input('time', 'today');
+        $timeRange = $this->mapTimeParamToEnum($timeParam);
+        
+        // Get date from request or use today (keeping existing functionality)
+        $date = $request->input('date') ? Carbon::parse($request->input('date')) : Carbon::today();
 
-            // Get all dashboard statistics
-            $stats = BaseService::getDashboardStats($machineIds, $date);
-            
-            // Calculate percentage changes
-            $totalToday = $stats['total_collections_today'];
-            $totalYesterday = $stats['total_collections_yesterday'];
-            
-            $totalPercentageChange = BaseService::calculatePercentageChange(
-                $totalToday['amount'], 
-                $totalYesterday['amount']
-            );
+        $response = [
+            'success' => true,
+            'data' => [
+                'main' => BaseService::getSummary($timeRange, CompanyType::MAIN),
+                'sateki' => BaseService::getSummary($timeRange, CompanyType::SATEKI),
+                'kimuje' => BaseService::getSummary($timeRange, CompanyType::KIMUJE),
+                'sateki_machine_count' => BaseService::countMachine(CompanyType::SATEKI),
+                'Kimuje_machine_count' => BaseService::countMachine(CompanyType::KIMUJE),
+                'today_total_transactions' => BaseService::getTransactionsCount($timeRange)
+            ],
+            'message' => "Success"
+        ];
 
-            // Format response for mobile app
-            $response = [
-                'success' => true,
-                'data' => [
-                    'total_collections_today' => [
-                        'amount' => $totalToday['amount'],
-                        'formatted_amount' => $totalToday['formatted_amount'],
-                        'count' => $totalToday['count'],
-                        'percentage_change' => round($totalPercentageChange, 1),
-                        'yesterday_amount' => $totalYesterday['formatted_amount'],
-                    ],
-                    'collector_collections' => $stats['collector_stats'],
-                    'machine_counts' => $stats['machine_counts'],
-                    'total_transactions_today' => $stats['total_transactions_today'],
-                    'top_collectors' => BaseService::getTopCollectors($machineIds, $date, 3),
-                    'collections_trend' => BaseService::getCollectionsTrend($machineIds, 7),
-                ],
-                'meta' => [
-                    'date' => $date->toDateString(),
-                    'formatted_date' => $date->format('F j, Y'),
-                    'machine_count' => count($machineIds ?? []),
-                    'generated_at' => now()->toISOString(),
-                ]
-            ];
+        return response()->json($response);
 
-            return response()->json($response);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to get dashboard data',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to get dashboard data',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
+
+/**
+ * Map time parameter from request to TimeRange enum
+ */
+private function mapTimeParamToEnum(string $timeParam): TimeRange
+{
+    return match($timeParam) {
+        'today' => TimeRange::TODAY,
+        'this_week' => TimeRange::THIS_WEEK,
+        'this_month' => TimeRange::THIS_MONTH,
+        'yesterday' => TimeRange::YESTERDAY,
+        'previous_week' => TimeRange::PREVIOUS_WEEK,
+        'previous_month' => TimeRange::PREVIOUS_MONTH,
+        'this_year' => TimeRange::THIS_YEAR,
+        'previous_year' => TimeRange::PREVIOUS_YEAR,
+        default => TimeRange::TODAY, // Default fallback
+    };
+}
 
     /**
      * Get specific collector dashboard

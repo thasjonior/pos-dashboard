@@ -35,4 +35,6 @@ class Collection extends Model
     {
         return $this->hasMany(CollectionItem::class);
     }
+
+    //company 
 }

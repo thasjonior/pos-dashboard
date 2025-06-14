@@ -33,7 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('collection', 'App\Http\Controllers\CollectionController');
 });
 
-Route::prefix('dashboard')->middleware('auth:sanctum')->group(function () {
+Route::prefix('dashboard')->group(function () {
     Route::get('/', [DashboardController::class, 'index']);
     Route::get('/collector/{collectorId}', [DashboardController::class, 'collectorDashboard']);
     Route::get('/summary', [DashboardController::class, 'collectionsSummary']);

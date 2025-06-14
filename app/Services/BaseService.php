@@ -2,7 +2,7 @@
 // app/Services/GeneralService.php
 
 namespace App\Services;
-
+use App\Services\TimeRange;
 use App\Models\User;
 use App\Models\Client;
 use App\Models\Role;
@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use App\Models\Collection;
 use Carbon\Carbon;
 use App\Models\CollectionItem;
+
 
 class BaseService
 {
@@ -48,7 +49,6 @@ class BaseService
 
             DB::commit();
             return $collector;
-
         } catch (Exception $e) {
             DB::rollBack();
             throw new Exception("Failed to get or create collector: " . $e->getMessage());
@@ -59,7 +59,7 @@ class BaseService
     //getCreateOrUpdateMachine
     //find existing Machine
 
-   
+
     /**
      * Get or create both collector and client in one transaction
      *
@@ -69,7 +69,7 @@ class BaseService
      * @return array ['collector' => User, 'client' => Client]
      * @throws Exception
      */
-  
+
     // }
 
     /**
@@ -78,28 +78,28 @@ class BaseService
      * @param array $searchCriteria
      * @return \Illuminate\Database\Eloquent\Collection
      */
-   
+
     /**
      * Find collectors by various search criteria
      *
      * @param array $searchCriteria
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    
+
     /**
      * Get client statistics
      *
      * @param string $clientId
      * @return array
      */
-  
+
     /**
      * Get collector statistics
      *
      * @param string $collectorId
      * @return array
      */
- 
+
     /**
      * Bulk create or update clients
      *
@@ -107,14 +107,14 @@ class BaseService
      * @param string $machineId
      * @return array
      */
-    
+
 
     /**
      * Find existing collector
      */
     private function findExistingCollector(array $data): ?User
     {
-        $query = User::where('role','collector');  
+        $query = User::where('role', 'collector');
 
         // Search by phone first (most specific)
         if (!empty($data['collector_name'])) {
@@ -131,15 +131,15 @@ class BaseService
         return null;
     }
 
- 
+
 
     /**
      * Create new collector
      */
     private function createNewCollector(array $data): User
     {
-        
-        
+
+
 
         return User::create([
             'id' => Str::uuid(),
@@ -151,7 +151,7 @@ class BaseService
         ]);
     }
 
-   
+
 
     /**
      * Update collector if needed
@@ -185,7 +185,7 @@ class BaseService
         return $collector;
     }
 
-  
+
 
     /**
      * Format phone number to standard format
@@ -194,7 +194,7 @@ class BaseService
     {
         // Remove all non-numeric characters
         $cleaned = preg_replace('/[^0-9]/', '', $phone);
-        
+
         // Handle Tanzanian phone numbers
         if (str_starts_with($cleaned, '255')) {
             return '+' . $cleaned;
@@ -203,7 +203,7 @@ class BaseService
         } elseif (strlen($cleaned) === 9) {
             return '+255' . $cleaned;
         }
-        
+
         // Return with + if not already present
         return str_starts_with($phone, '+') ? $phone : '+' . $cleaned;
     }
@@ -214,7 +214,7 @@ class BaseService
     private function isValidPhoneNumber(string $phone): bool
     {
         $formatted = $this->formatPhoneNumber($phone);
-        
+
         // Tanzanian phone number validation
         return preg_match('/^\+255[67]\d{8}$/', $formatted) === 1;
     }
@@ -252,7 +252,7 @@ class BaseService
     private function getPreferredPaymentTypes($collections): array
     {
         $types = [];
-        
+
         foreach ($collections as $collection) {
             foreach ($collection->collectionItems as $item) {
                 $typeName = $item->collectionType->name;
@@ -261,14 +261,14 @@ class BaseService
         }
 
         arsort($types);
-        
+
         return array_slice($types, 0, 3, true);
     }
 
 
 
     // CLIENT 
-        //get or create a client
+    //get or create a client
     static function getOrCreateClient(Request $request)
     {
         //validation logic
@@ -289,8 +289,7 @@ class BaseService
                     'address' => $request->client_address ?? null,
                     'description' => $request->client_name ?? null,
                 ]);
-            }
-            else {
+            } else {
                 // Update existing client with new details
                 $client->update([
                     'description' => $request->client_name ?? $client->description,
@@ -325,13 +324,13 @@ class BaseService
             ->where('is_active', true)
             ->get()
             ->pluck('id');
-            return  $machineIds->isEmpty() ? null : $machineIds;
+        return  $machineIds->isEmpty() ? null : $machineIds;
     }
 
 
     //DASHBOARD
 
-        /**
+    /**
      * Get dashboard statistics for collections
      *
      * @param array $machineIds
@@ -362,15 +361,15 @@ class BaseService
     public static function getTotalCollectionsToday($machineIds = null, Carbon $date = null): array
     {
         $date = $date ?? Carbon::today();
-        
+
         $query = Collection::whereDate('date', $date);
-        
+
         if ($machineIds) {
             $query->whereIn('machine_id', $machineIds);
         }
 
         $collections = $query->with('collectionItems')->get();
-        
+
         $totalAmount = $collections->sum(function ($collection) {
             return $collection->collectionItems->sum('amount');
         });
@@ -395,17 +394,17 @@ class BaseService
         $yesterday = $date->copy()->subDay();
 
         $query = Collection::whereDate('date', $date);
-        
+
         if ($machineIds) {
             $query->whereIn('machine_id', $machineIds);
         }
 
         $collections = $query->with(['collectionItems', 'collector'])->get();
-        
+
         // Group by collector
         $collectorStats = $collections->groupBy('collector_id')->map(function ($collectorCollections) use ($yesterday, $machineIds) {
             $collector = $collectorCollections->first()->collector;
-            
+
             $todayAmount = $collectorCollections->sum(function ($collection) {
                 return $collection->collectionItems->sum('amount');
             });
@@ -413,18 +412,18 @@ class BaseService
             // Get yesterday's amount for this collector
             $yesterdayQuery = Collection::whereDate('date', $yesterday)
                 ->where('collector_id', $collector->id);
-            
+
             if ($machineIds) {
                 $yesterdayQuery->whereIn('machine_id', $machineIds);
             }
-            
+
             $yesterdayAmount = $yesterdayQuery->with('collectionItems')->get()
                 ->sum(function ($collection) {
                     return $collection->collectionItems->sum('amount');
                 });
 
-            $percentageChange = $yesterdayAmount > 0 
-                ? (($todayAmount - $yesterdayAmount) / $yesterdayAmount) * 100 
+            $percentageChange = $yesterdayAmount > 0
+                ? (($todayAmount - $yesterdayAmount) / $yesterdayAmount) * 100
                 : ($todayAmount > 0 ? 100 : 0);
 
             return [
@@ -450,13 +449,13 @@ class BaseService
     public static function getMachineCounts($machineIds = null): array
     {
         $query = Machine::where('is_active', true);
-        
+
         if ($machineIds) {
             $query->whereIn('id', $machineIds);
         }
 
         $machines = $query->with('company')->get();
-        
+
         // Group by company or collector (you can modify this logic)
         $machineCounts = $machines->groupBy('company.name')->map(function ($companyMachines, $companyName) {
             return [
@@ -479,11 +478,11 @@ class BaseService
     public static function getTotalTransactionsToday($machineIds = null, Carbon $date = null): int
     {
         $date = $date ?? Carbon::today();
-        
+
         $query = CollectionItem::whereHas('collection', function ($q) use ($date) {
             $q->whereDate('date', $date);
         });
-        
+
         if ($machineIds) {
             $query->whereHas('collection', function ($q) use ($machineIds) {
                 $q->whereIn('machine_id', $machineIds);
@@ -522,7 +521,7 @@ class BaseService
         if ($previous == 0) {
             return $current > 0 ? 100 : 0;
         }
-        
+
         return (($current - $previous) / $previous) * 100;
     }
 
@@ -537,15 +536,15 @@ class BaseService
     public static function getTopCollectors($machineIds = null, Carbon $date = null, $limit = 5): array
     {
         $date = $date ?? Carbon::today();
-        
+
         $query = Collection::whereDate('date', $date);
-        
+
         if ($machineIds) {
             $query->whereIn('machine_id', $machineIds);
         }
 
         $collections = $query->with(['collectionItems', 'collector'])->get();
-        
+
         $collectorTotals = $collections->groupBy('collector_id')->map(function ($collectorCollections) {
             $collector = $collectorCollections->first()->collector;
             $totalAmount = $collectorCollections->sum(function ($collection) {
@@ -576,18 +575,18 @@ class BaseService
         $startDate = $endDate->copy()->subDays($days - 1);
 
         $query = Collection::whereBetween('date', [$startDate, $endDate]);
-        
+
         if ($machineIds) {
             $query->whereIn('machine_id', $machineIds);
         }
 
         $collections = $query->with('collectionItems')->get();
-        
+
         $trendData = [];
         for ($i = 0; $i < $days; $i++) {
             $currentDate = $startDate->copy()->addDays($i);
             $dayCollections = $collections->where('date', $currentDate->toDateString());
-            
+
             $totalAmount = $dayCollections->sum(function ($collection) {
                 return $collection->collectionItems->sum('amount');
             });
@@ -602,5 +601,126 @@ class BaseService
         }
 
         return $trendData;
+    }
+
+    public static function getCollectionTotal(TimeRange $time, $companyId)
+{
+    $start = $time->getStartDate()->format('Y-m-d');
+    $end = $time->getEndDate()->format('Y-m-d');
+
+    $collection = Collection::join('machines', 'collections.machine_id', '=', 'machines.id')
+        ->when($companyId != 0, function ($query) use ($companyId) {
+            return $query->where('machines.company_id', $companyId);
+        })
+        ->whereBetween('collections.date', [$start, $end])
+        ->sum('collections.amount');
+    return $collection;
+}
+
+    public static function getSummary(TimeRange $time, CompanyType $companyType)
+    {
+        // Get total for current month
+        $totalAmount = BaseService::getCollectionTotal($time, $companyType->getCompanyID());
+
+        // Get previous month total (fixed the bug here)
+        $prevAmount = BaseService::getCollectionTotal($time->getPreviousTimeRange(), $companyType->getCompanyID());
+
+        // Get difference
+        $diff = $totalAmount - $prevAmount;
+
+        // Get trend [up, down, same]
+        $trend = 'same';
+        if ($diff > 0) {
+            $trend = 'up';
+        } elseif ($diff < 0) {
+            $trend = 'down';
+        }
+
+        // Calculate percent difference
+        $percentDifference = 0;
+        if ($prevAmount != 0) {
+            $percentDifference = (($totalAmount - $prevAmount) / $prevAmount) * 100;
+            $percentDifference = round($percentDifference, 2); // Round to 2 decimal places
+        } elseif ($totalAmount > 0) {
+            // If previous amount was 0 but current is positive, it's 100% increase
+            $percentDifference = 100;
+        }
+
+        return [
+            "trend" => $trend,
+            "amount" => BaseService::formatShortNumber($totalAmount),
+            "previous_amount" => BaseService::formatShortNumber($prevAmount),
+            "percent_difference" => strval($percentDifference)  . "%"
+        ];
+    }
+
+    public static function formatShortNumber($number, int $decimals = 1): string
+    {
+        if ($number < 1000) {
+            return (string) $number;
+        }
+
+        if ($number < 1000000) {
+            $formatted = $number / 1000;
+            return self::removeTrailingZeros(number_format($formatted, $decimals)) . 'K';
+        }
+
+        if ($number < 1000000000) {
+            $formatted = $number / 1000000;
+            return self::removeTrailingZeros(number_format($formatted, $decimals)) . 'M';
+        }
+
+        // For billions and above
+        $formatted = $number / 1000000000;
+        return self::removeTrailingZeros(number_format($formatted, $decimals)) . 'B';
+    }
+
+    /**
+     * Remove trailing zeros and decimal point if not needed
+     *
+     * @param string $number
+     * @return string
+     */
+    private static function removeTrailingZeros(string $number): string
+    {
+        return rtrim(rtrim($number, '0'), '.');
+    }
+
+    public static function countMachine($companyId)
+    {
+        return Machine::where('company_id', $companyId->getCompanyID())->count();
+    }
+
+    public static function getTransactionsCount(TimeRange $time, $companyId = Null)
+    {
+        $start = $time->getStartDate()->format('Y-m-d');
+        $end = $time->getEndDate()->format('Y-m-d');
+
+        $transactions = Collection::join('machines', 'collections.machine_id', '=', 'machines.id')
+             ->when($companyId != Null, function ($query) use ($companyId) {
+            return $query->where('machines.company_id', $companyId);
+        })
+            ->whereBetween('collections.date', [$start, $end])
+            ->count();
+
+        return $transactions;
+    }
+}
+
+
+
+enum CompanyType: string
+{
+    case MAIN = 'main';
+    case SATEKI = 'sateki';
+    case KIMUJE = 'kimuje';
+
+    public function getCompanyID(): int
+    {
+        return match ($this) {
+            self::MAIN => 0,
+            self::SATEKI => 1,
+            self::KIMUJE => 2,
+        };
     }
 }
