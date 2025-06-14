@@ -254,14 +254,14 @@ class AuthController extends BaseController
     // routes/web.php
 
 // Controller method
-public function download()
+public function download($name)
 {
-    $filePath = public_path('uploads/app-release.apk');
-    
+    $filePath = public_path('uploads/' . $name . '.apk');
+
     if (!file_exists($filePath)) {
         abort(404, 'File not found');
     }
-    
+
     return response()->download($filePath);
 }
 }

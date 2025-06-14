@@ -7,5 +7,5 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/download/apk', [AuthController::class, 'download']);
+Route::get('/download/{name}', [AuthController::class, 'download']);
 
