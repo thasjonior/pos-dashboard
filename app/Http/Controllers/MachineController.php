@@ -16,7 +16,7 @@ class MachineController extends BaseController
     //index
     public function index()
     {
-        $machines = Machine::all();
+        $machines = Machine::latest('created_at')->get();
         return $this->sendResponse(
             MachineResource::collection($machines),
             'Machines retrieved successfully'
