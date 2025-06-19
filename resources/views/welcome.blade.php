@@ -24,7 +24,7 @@
         <!-- Buttons Container -->
         <div class="flex flex-col lg:flex-row gap-8 lg:gap-12 w-full justify-center">
             <!-- Admin Card -->
-            {{-- <div class="flex flex-col items-center group">
+            <div class="flex flex-col items-center group">
                 <div class="mb-4 transform group-hover:scale-105 transition-transform duration-300">
                     <dotlottie-player 
                         src="https://lottie.host/d38f8819-6368-4e12-a14f-55fbd4008f3f/spzCsu6aRs.lottie" 
@@ -39,7 +39,7 @@
                    class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 text-center w-full max-w-xs">
                     Download Admin APK
                 </a>
-            </div> --}}
+            </div>
 
             <!-- Collector Card -->
             <div class="flex flex-col items-center group">
