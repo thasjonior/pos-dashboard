@@ -261,7 +261,6 @@ public function download($name)
     if (!file_exists($filePath)) {
         abort(404, 'File not found');
     }
-
     return response()->download($filePath);
 }
 }
