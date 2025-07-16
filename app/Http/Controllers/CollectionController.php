@@ -149,7 +149,7 @@ private function handleCollectorSyncData(Request $request)
     ]);
 
     if ($validation->fails()) {
-        Log::warning('Sync data validation failed:', $validation->errors()->toArray());
+        // Log::warning('Sync data validation failed:', $validation->errors()->toArray());
         return $this->sendError($validation->errors()->first(), 422);
     }
 
@@ -159,7 +159,7 @@ private function handleCollectorSyncData(Request $request)
         ->first();
     
     if ($existingCollection) {
-        Log::info('Collection already exists:', ['receipt_id' => $request->receiptNumber]);
+        // Log::info('Collection already exists:', ['receipt_id' => $request->receiptNumber]);
         return $this->sendResponse(new CollectionResource($existingCollection), 'Collection already exists');
     }
 
@@ -168,10 +168,10 @@ private function handleCollectorSyncData(Request $request)
         $client = $this->getOrCreateClientFromSync($clientInfo, $request->clientPhone);
         
         if (!$client) {
-            Log::error('Failed to create client from sync data', [
-                'clientName' => $request->clientName,
-                'clientPhone' => $request->clientPhone
-            ]);
+            // Log::error('Failed to create client from sync data', [
+            //     'clientName' => $request->clientName,
+            //     'clientPhone' => $request->clientPhone
+            // ]);
             return $this->sendError('Client creation failed', 500);
         }
 
@@ -201,18 +201,18 @@ private function handleCollectorSyncData(Request $request)
             ]);
         }
 
-        Log::info('Collection created successfully from sync data:', [
-            'collection_id' => $collection->id,
-            'receipt_id' => $collection->receipt_id
-        ]);
+        // Log::info('Collection created successfully from sync data:', [
+        //     'collection_id' => $collection->id,
+        //     'receipt_id' => $collection->receipt_id
+        // ]);
 
         return $this->sendResponse(new CollectionResource($collection), 'Collection synced successfully');
 
     } catch (\Exception $e) {
-        Log::error('Error creating collection from sync data:', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
+        // Log::error('Error creating collection from sync data:', [
+        //     'error' => $e->getMessage(),
+        //     'trace' => $e->getTraceAsString()
+        // ]);
         return $this->sendError('Failed to create collection: ' . $e->getMessage(), 500);
     }
 }
@@ -314,11 +314,11 @@ private function getOrCreateClientFromSync(array $clientInfo, string $phone): ?C
 
         return $client;
     } catch (\Exception $e) {
-        Log::error('Error creating client from sync data:', [
-            'error' => $e->getMessage(),
-            'clientInfo' => $clientInfo,
-            'phone' => $phone
-        ]);
+        // Log::error('Error creating client from sync data:', [
+        //     'error' => $e->getMessage(),
+        //     'clientInfo' => $clientInfo,
+        //     'phone' => $phone
+        // ]);
         return null;
     }
 }
@@ -359,10 +359,10 @@ private function parseCollectionDate(string $createdAt): string
         $date = \Carbon\Carbon::parse($createdAt);
         return $date->format('Y-m-d');
     } catch (\Exception $e) {
-        Log::warning('Failed to parse collection date, using current date:', [
-            'createdAt' => $createdAt,
-            'error' => $e->getMessage()
-        ]);
+        // Log::warning('Failed to parse collection date, using current date:', [
+        //     'createdAt' => $createdAt,
+        //     'error' => $e->getMessage()
+        // ]);
         return now()->format('Y-m-d');
     }
 }
@@ -417,10 +417,10 @@ private function getOrCreateCollectionType(string $sourceName): \App\Models\Coll
             'is_active' => true,
         ]);
         
-        Log::info('Created new collection type:', [
-            'name' => $sourceName,
-            'id' => $collectionType->id
-        ]);
+        // Log::info('Created new collection type:', [
+        //     'name' => $sourceName,
+        //     'id' => $collectionType->id
+        // ]);
     }
     
     return $collectionType;
