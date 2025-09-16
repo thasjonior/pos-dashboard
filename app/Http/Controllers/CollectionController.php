@@ -73,7 +73,7 @@ class CollectionController extends BaseController
     {
         // Parse client information from clientName (if provided)
         $clientName = $request->input('clientName', '');
-        $clientPhone = $request->input('clientPhone', '');
+        $clientPhone = strval($request->input('clientPhone', ''));
         $clientInfo = $this->parseClientInfo($clientName);
         
         // Extract machine ID from metadata or try to find by collector
@@ -84,7 +84,6 @@ class CollectionController extends BaseController
             'id' => 'required|string',
             'receiptNumber' => 'required|string',
             'clientName' => 'nullable|string|max:500',
-            'clientPhone' => 'nullable|string|max:255',
             'totalAmount' => 'required|numeric|min:0',
             'items' => 'required|array|min:1',
             'items.*.sourceName' => 'required|string',
