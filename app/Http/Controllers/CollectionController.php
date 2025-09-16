@@ -73,7 +73,7 @@ class CollectionController extends BaseController
     {
         // Parse client information from clientName (if provided)
         $clientName = $request->input('clientName', '');
-        $clientPhone = strval($request->input('clientPhone', ''));
+        $clientPhone = $request->input('clientPhone', '');
         $clientInfo = $this->parseClientInfo($clientName);
         
         // Extract machine ID from metadata or try to find by collector
@@ -84,6 +84,7 @@ class CollectionController extends BaseController
             'id' => 'required|string',
             'receiptNumber' => 'required|string',
             'clientName' => 'nullable|string|max:500',
+            'clientPhone' => 'nullable|string|max:255',
             'totalAmount' => 'required|numeric|min:0',
             'items' => 'required|array|min:1',
             'items.*.sourceName' => 'required|string',
@@ -105,12 +106,18 @@ class CollectionController extends BaseController
         }
 
         try {
-            // Create or get client if client information is provided
+            // Create or get client if client information is provided, otherwise use default
             $client = null;
             $clientDisplayName = 'Walk-in Customer';
             
             if (!empty($clientName) || !empty($clientPhone)) {
                 $client = $this->getOrCreateClientFromSync($clientInfo, $clientPhone);
+                if ($client) {
+                    $clientDisplayName = $client->name;
+                }
+            } else {
+                // Use default client based on authenticated user
+                $client = $this->getDefaultClientForCollector();
                 if ($client) {
                     $clientDisplayName = $client->name;
                 }
@@ -173,7 +180,7 @@ class CollectionController extends BaseController
             return $this->sendError($validation->errors()->first(), 422);
         }
 
-        // Handle client creation only if client information is provided
+        // Handle client creation only if client information is provided, otherwise use default
         $client = null;
         $clientDisplayName = 'Walk-in Customer';
         
@@ -183,6 +190,12 @@ class CollectionController extends BaseController
                 return $this->sendError('Client creation failed', 500);
             }
             $clientDisplayName = $client->name;
+        } else {
+            // Use default client based on authenticated user
+            $client = $this->getDefaultClientForCollector();
+            if ($client) {
+                $clientDisplayName = $client->name;
+            }
         }
 
         // Save collection
@@ -236,7 +249,7 @@ class CollectionController extends BaseController
     /**
      * Get or create client from sync data
      */
-    private function getOrCreateClientFromSync(array $clientInfo, string $phone): ?Client
+    private function getOrCreateClientFromSync(array $clientInfo, $phone): ?Client
     {
         try {
             // If no meaningful client info provided, return null
@@ -377,5 +390,56 @@ class CollectionController extends BaseController
         }
         
         return $collectionType;
+    }
+
+    /**
+     * Get default client based on authenticated collector user
+     */
+    private function getDefaultClientForCollector(): ?Client
+    {
+        try {
+            $user = auth()->user();
+            
+            // Check if user is authenticated and has collector role
+            if (!$user || !$user->hasRole('collector')) {
+                return null;
+            }
+            
+            $userName = $user->name;
+            $defaultClientName = null;
+            
+            // Check if user name starts with "Sateki" followed by numbers
+            if (preg_match('/^Sateki\d+/i', $userName)) {
+                $defaultClientName = 'unknown-client-sateki';
+            }
+            // Check if user name starts with "Kimuje" followed by numbers  
+            elseif (preg_match('/^Kimuje\d+/i', $userName)) {
+                $defaultClientName = 'unknown-client-kimuje';
+            }
+            
+            // If no pattern matches, return null (will use 'Walk-in Customer')
+            if (!$defaultClientName) {
+                return null;
+            }
+            
+            // Find and return the default client
+            $client = Client::where('name', $defaultClientName)->first();
+            
+            if (!$client) {
+                Log::warning('Default client not found in database', [
+                    'expected_client_name' => $defaultClientName,
+                    'collector_user' => $userName
+                ]);
+            }
+            
+            return $client;
+            
+        } catch (\Exception $e) {
+            Log::error('Error getting default client for collector', [
+                'error' => $e->getMessage(),
+                'user_id' => auth()->id() ?? 'not_authenticated'
+            ]);
+            return null;
+        }
     }
 }
