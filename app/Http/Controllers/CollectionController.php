@@ -177,6 +177,7 @@ class CollectionController extends BaseController
         ]);
 
         if ($validation->fails()) {
+            Log::error("ERROR VALIDATION".$validation->errors()->first());
             return $this->sendError($validation->errors()->first(), 422);
         }
 
