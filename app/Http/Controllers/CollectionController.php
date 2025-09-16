@@ -83,8 +83,6 @@ class CollectionController extends BaseController
         $validation = Validator::make($request->all(), [
             'id' => 'required|string',
             'receiptNumber' => 'required|string',
-            'clientName' => 'nullable|string|max:500',
-            'clientPhone' => 'nullable|string|max:255',
             'totalAmount' => 'required|numeric|min:0',
             'items' => 'required|array|min:1',
             'items.*.sourceName' => 'required|string',
