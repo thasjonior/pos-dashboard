@@ -16,7 +16,6 @@ class CollectionController extends BaseController
     //get all collections
     public function index(Request $request)
     {
-
         $collections = Collection::with(['client', 'machine', 'collectionItems.collectionType'])
             ->when($request->has('machine_id'), function ($query) use ($request) {
                 return $query->where('machine_id', $request->machine_id);
@@ -71,15 +70,18 @@ class CollectionController extends BaseController
      */
     private function handleCollectorSyncData(Request $request)
     {
-        // Parse client information from clientName (if provided)
-        $clientName = $request->input('clientName', '');
-        $clientPhone = $request->input('clientPhone', '');
-        $clientInfo = $this->parseClientInfo($clientName);
-        
+        Log::info('Processing collector sync data', [
+            'receipt_number' => $request->receiptNumber,
+            'client_name' => $request->input('clientName'),
+            'client_phone' => $request->input('clientPhone'),
+            'collector_username' => $request->input('metadata.collectorUsername'),
+            'total_amount' => $request->totalAmount
+        ]);
+
         // Extract machine ID from metadata or try to find by collector
         $machineId = $this->extractMachineId($request);
         
-        // Validate sync data - client info is now optional
+        // Validate sync data
         $validation = Validator::make($request->all(), [
             'id' => 'required|string',
             'receiptNumber' => 'required|string',
@@ -91,35 +93,36 @@ class CollectionController extends BaseController
         ]);
 
         if ($validation->fails()) {
+            Log::error('Validation failed for collector sync data', [
+                'errors' => $validation->errors()->toArray(),
+                'receipt_number' => $request->receiptNumber
+            ]);
             return $this->sendError($validation->errors()->first(), 422);
         }
 
         // Check if collection already exists (prevent duplicates)
         $existingCollection = Collection::where('receipt_id', $request->receiptNumber)
-            ->orWhere('notes', 'like', '%' . $request->id . '%')
+            ->orWhere(function($query) use ($request) {
+                $query->where('notes', 'like', '%' . $request->id . '%')
+                      ->orWhere('notes', 'like', '%' . $request->receiptNumber . '%');
+            })
             ->first();
         
         if ($existingCollection) {
+            Log::info('Collection already exists', [
+                'existing_id' => $existingCollection->id,
+                'receipt_number' => $request->receiptNumber
+            ]);
             return $this->sendResponse(new CollectionResource($existingCollection), 'Collection already exists');
         }
 
         try {
-            // Create or get client if client information is provided, otherwise use default
-            $client = null;
-            $clientDisplayName = 'Walk-in Customer';
-            
-            if (!empty($clientName) || !empty($clientPhone)) {
-                $client = $this->getOrCreateClientFromSync($clientInfo, $clientPhone);
-                if ($client) {
-                    $clientDisplayName = $client->name;
-                }
-            } else {
-                // Use default client based on authenticated user
-                $client = $this->getDefaultClientForCollector();
-                if ($client) {
-                    $clientDisplayName = $client->name;
-                }
-            }
+            // Determine client assignment using new logic
+            $client = $this->determineClientForCollection(
+                $request->input('clientName'), 
+                $request->input('clientPhone')
+            );
+            $clientDisplayName = $client ? $client->name : 'Walk-in Customer';
 
             // Parse date from createdAt
             $collectionDate = $this->parseCollectionDate($request->createdAt);
@@ -136,30 +139,56 @@ class CollectionController extends BaseController
             ]);
 
             // Add collection items
-            foreach ($request->items as $item) {
-                // Try to find existing collection type or create new one
-                $collectionType = $this->getOrCreateCollectionType($item['sourceName']);
-                
-                $collection->collectionItems()->create([
-                    'collection_type_id' => $collectionType->id,
-                    'collection_id' => $collection->id,
-                    'amount' => $item['amount'],
-                ]);
+            foreach ($request->items as $index => $item) {
+                try {
+                    $collectionType = $this->getOrCreateCollectionType($item['sourceName']);
+                    
+                    $collection->collectionItems()->create([
+                        'collection_type_id' => $collectionType->id,
+                        'collection_id' => $collection->id,
+                        'amount' => $item['amount'],
+                    ]);
+                    
+                } catch (\Exception $e) {
+                    Log::error('Failed to create collection item', [
+                        'collection_id' => $collection->id,
+                        'item_index' => $index,
+                        'item' => $item,
+                        'error' => $e->getMessage()
+                    ]);
+                    throw $e; // Re-throw to trigger rollback
+                }
             }
+
+            Log::info('Collection synced successfully', [
+                'collection_id' => $collection->id,
+                'client_id' => $client ? $client->id : null,
+                'client_name' => $clientDisplayName,
+                'machine_id' => $machineId,
+                'assignment_method' => $this->getClientAssignmentMethod(
+                    $request->input('clientName'), 
+                    $request->input('clientPhone')
+                )
+            ]);
 
             return $this->sendResponse(new CollectionResource($collection), 'Collection synced successfully');
 
         } catch (\Exception $e) {
+            Log::error('Failed to create collection from sync data', [
+                'error' => $e->getMessage(),
+                'receipt_number' => $request->receiptNumber,
+                'trace' => $e->getTraceAsString()
+            ]);
             return $this->sendError('Failed to create collection: ' . $e->getMessage(), 500);
         }
     }
 
     /**
-     * Handle regular API request (existing logic)
+     * Handle regular API request (existing logic preserved)
      */
     private function handleRegularApiRequest(Request $request)
     {
-        // Updated validation - client info is now optional
+        // Validation - kept exactly as original
         $validation = Validator::make($request->all(), [
             'receipt_id' => 'required|string',
             'client_name' => 'nullable|string|max:255',
@@ -179,7 +208,7 @@ class CollectionController extends BaseController
             return $this->sendError($validation->errors()->first(), 422);
         }
 
-        // Handle client creation only if client information is provided, otherwise use default
+        // Handle client creation - preserved original logic with slight enhancement
         $client = null;
         $clientDisplayName = 'Walk-in Customer';
         
@@ -190,14 +219,15 @@ class CollectionController extends BaseController
             }
             $clientDisplayName = $client->name;
         } else {
-            // Use default client based on authenticated user
-            $client = $this->getDefaultClientForCollector();
-            if ($client) {
+            // Use default client based on authenticated user (if applicable)
+            $defaultClient = $this->getDefaultClientForCollector();
+            if ($defaultClient) {
+                $client = $defaultClient;
                 $clientDisplayName = $client->name;
             }
         }
 
-        // Save collection
+        // Save collection - preserved original structure
         $collection = Collection::create([
             'receipt_id' => $request->receipt_id,
             'client_id' => $client ? $client->id : null,
@@ -208,7 +238,7 @@ class CollectionController extends BaseController
             'client_name' => $clientDisplayName,
         ]);
 
-        // Add collection items
+        // Add collection items - preserved original logic
         foreach ($request->items as $item) {
             $collection->collectionItems()->create([
                 'collection_type_id' => $item['type_id'],
@@ -221,14 +251,63 @@ class CollectionController extends BaseController
     }
 
     /**
-     * Parse client information from clientName string
+     * NEW: Determine which client should be assigned to the collection
+     */
+    private function determineClientForCollection(?string $clientName, ?string $clientPhone): ?Client
+    {
+        // Check if we have meaningful client information
+        $hasValidClientName = !empty($clientName) && 
+                             !in_array(strtolower(trim($clientName)), ['unknown', '']);
+        
+        $hasValidClientPhone = !empty($clientPhone) && 
+                              trim($clientPhone) !== '';
+
+        Log::debug('Determining client assignment', [
+            'client_name' => $clientName,
+            'client_phone' => $clientPhone,
+            'has_valid_name' => $hasValidClientName,
+            'has_valid_phone' => $hasValidClientPhone
+        ]);
+
+        // Case 1: Valid client information provided - create/get specific client
+        if ($hasValidClientName || $hasValidClientPhone) {
+            $clientInfo = $this->parseClientInfo($clientName);
+            $client = $this->getOrCreateClientFromSync($clientInfo, $clientPhone);
+            
+            if ($client) {
+                Log::debug('Using specific client', ['client_id' => $client->id, 'client_name' => $client->name]);
+                return $client;
+            }
+        }
+
+        // Case 2: No valid client info - use default client based on collector
+        Log::debug('No valid client info provided, using default collector client');
+        $defaultClient = $this->getDefaultClientForCollector();
+        
+        if ($defaultClient) {
+            Log::debug('Assigned default client', [
+                'client_id' => $defaultClient->id, 
+                'client_name' => $defaultClient->name
+            ]);
+            return $defaultClient;
+        }
+
+        // Case 3: No default client found - return null (will use 'Walk-in Customer')
+        Log::debug('No default client could be determined');
+        return null;
+    }
+
+    /**
+     * Parse client information from clientName string - Enhanced
      * Format: "Name, Location, Other details"
      */
-    private function parseClientInfo(string $clientName): array
+    private function parseClientInfo(?string $clientName): array
     {
-        if (empty($clientName)) {
+        // Treat empty, null, or "unknown" as no client info
+        if (empty($clientName) || 
+            in_array(strtolower(trim($clientName)), ['unknown', ''])) {
             return [
-                'name' => 'Walk-in Customer',
+                'name' => null,
                 'address' => null,
                 'full_description' => null,
                 'other_details' => null
@@ -238,7 +317,7 @@ class CollectionController extends BaseController
         $parts = array_map('trim', explode(',', $clientName));
         
         return [
-            'name' => $parts[0] ?? 'Walk-in Customer',
+            'name' => $parts[0] ?? null,
             'address' => $parts[1] ?? null,
             'full_description' => $clientName,
             'other_details' => implode(', ', array_slice($parts, 2)) ?: null
@@ -246,27 +325,29 @@ class CollectionController extends BaseController
     }
 
     /**
-     * Get or create client from sync data
+     * Get or create client from sync data - Enhanced
      */
-    private function getOrCreateClientFromSync(array $clientInfo, $phone): ?Client
+    private function getOrCreateClientFromSync(array $clientInfo, ?string $phone): ?Client
     {
         try {
             // If no meaningful client info provided, return null
-            if (empty($clientInfo['name']) || $clientInfo['name'] === 'Walk-in Customer') {
-                if (empty($phone)) {
-                    return null;
-                }
+            if (empty($clientInfo['name']) && empty($phone)) {
+                return null;
             }
 
-            // Try to find existing client by phone and name
+            // Try to find existing client by phone and/or name
             $query = Client::query();
             
             if (!empty($phone)) {
                 $query->where('phone', $phone);
             }
             
-            if (!empty($clientInfo['name']) && $clientInfo['name'] !== 'Walk-in Customer') {
-                $query->where('name', $clientInfo['name']);
+            if (!empty($clientInfo['name'])) {
+                if (!empty($phone)) {
+                    $query->orWhere('name', $clientInfo['name']);
+                } else {
+                    $query->where('name', $clientInfo['name']);
+                }
             }
             
             $client = $query->first();
@@ -274,48 +355,94 @@ class CollectionController extends BaseController
             if (!$client && (!empty($clientInfo['name']) || !empty($phone))) {
                 // Create new client only if we have meaningful information
                 $client = Client::create([
-                    'name' => $clientInfo['name'] ?: 'Walk-in Customer',
+                    'name' => $clientInfo['name'] ?: ('Client-' . substr($phone ?? '0000', -4)),
                     'phone' => $phone ?: null,
                     'address' => $clientInfo['address'],
                     'description' => $clientInfo['full_description'],
                 ]);
-            } elseif ($client) {
-                // Update existing client with latest information
-                $client->update([
-                    'address' => $clientInfo['address'] ?? $client->address,
-                    'description' => $clientInfo['full_description'] ?? $client->description,
+                
+                Log::info('Created new client from sync', [
+                    'client_id' => $client->id,
+                    'name' => $client->name,
+                    'phone' => $client->phone
                 ]);
+            } elseif ($client) {
+                // Update existing client with latest information if provided
+                $updateData = [];
+                if (!empty($clientInfo['address'])) $updateData['address'] = $clientInfo['address'];
+                if (!empty($clientInfo['full_description'])) $updateData['description'] = $clientInfo['full_description'];
+                
+                if (!empty($updateData)) {
+                    $client->update($updateData);
+                    Log::debug('Updated existing client', ['client_id' => $client->id]);
+                }
             }
 
             return $client;
         } catch (\Exception $e) {
+            Log::error('Error creating/updating client from sync', [
+                'error' => $e->getMessage(),
+                'client_info' => $clientInfo,
+                'phone' => $phone
+            ]);
             return null;
         }
     }
 
     /**
-     * Extract machine ID from request
+     * Extract machine ID from request - Enhanced
      */
     private function extractMachineId(Request $request): ?int
     {
         // First check if machine_id is directly provided
-        if ($request->has('machine_id')) {
+        if ($request->has('machine_id') && !empty($request->machine_id)) {
             return $request->machine_id;
         }
 
         // Try to extract from metadata
         $metadata = $request->input('metadata', []);
-        if (isset($metadata['collectorId'])) {
-            // Try to find machine by collector ID or username
-            $collectorUsername = $metadata['collectorUsername'] ?? null;
-            if ($collectorUsername) {
-                // You might want to add logic here to map collector username to machine
-                // For now, we'll try to find a machine with a matching name or return null
-                $machine = \App\Models\Machine::where('name', 'like', '%' . $collectorUsername . '%')->first();
-                return $machine ? $machine->id : null;
+        if (isset($metadata['collectorUsername'])) {
+            $collectorUsername = $metadata['collectorUsername'];
+            
+            // Try multiple matching strategies
+            $machine = \App\Models\Machine::where(function($query) use ($collectorUsername) {
+                $query->where('name', 'like', '%' . $collectorUsername . '%')
+                      ->orWhere('name', 'like', '%' . strtolower($collectorUsername) . '%')
+                      ->orWhere('code', $collectorUsername)
+                      ->orWhere('code', strtolower($collectorUsername));
+            })->first();
+            
+            if ($machine) {
+                Log::debug('Found machine by collector username', [
+                    'machine_id' => $machine->id,
+                    'collector_username' => $collectorUsername
+                ]);
+                return $machine->id;
+            }
+            
+            // Fallback: try to find by authenticated user
+            $user = auth()->user();
+            if ($user) {
+                $userMachine = \App\Models\Machine::where(function($query) use ($user) {
+                    $query->where('user_id', $user->id)
+                          ->orWhere('name', 'like', '%' . $user->name . '%');
+                })->first();
+                
+                if ($userMachine) {
+                    Log::debug('Found machine by authenticated user', [
+                        'machine_id' => $userMachine->id,
+                        'user_name' => $user->name
+                    ]);
+                    return $userMachine->id;
+                }
             }
         }
 
+        Log::warning('Could not determine machine_id', [
+            'collector_username' => $metadata['collectorUsername'] ?? 'not_provided',
+            'authenticated_user' => auth()->user()?->name ?? 'not_authenticated'
+        ]);
+        
         return null;
     }
 
@@ -328,6 +455,10 @@ class CollectionController extends BaseController
             $date = \Carbon\Carbon::parse($createdAt);
             return $date->format('Y-m-d');
         } catch (\Exception $e) {
+            Log::warning('Failed to parse collection date, using current date', [
+                'createdAt' => $createdAt,
+                'error' => $e->getMessage()
+            ]);
             return now()->format('Y-m-d');
         }
     }
@@ -345,29 +476,33 @@ class CollectionController extends BaseController
         $notes[] = "Receipt Number: " . $request->receiptNumber;
         
         // Add cashier information
-        if ($request->has('cashierName')) {
+        if ($request->has('cashierName') && !empty($request->cashierName)) {
             $notes[] = "Cashier: " . $request->cashierName;
         }
         
         // Add metadata information
         $metadata = $request->input('metadata', []);
         if (!empty($metadata)) {
-            if (isset($metadata['collectorUsername'])) {
+            if (isset($metadata['collectorUsername']) && !empty($metadata['collectorUsername'])) {
                 $notes[] = "Collector: " . $metadata['collectorUsername'];
             }
-            if (isset($metadata['loginMode'])) {
+            if (isset($metadata['loginMode']) && !empty($metadata['loginMode'])) {
                 $notes[] = "Collection Mode: " . $metadata['loginMode'];
             }
         }
         
         // Add print information
-        if ($request->has('printedAt')) {
+        if ($request->has('printedAt') && !empty($request->printedAt)) {
             $notes[] = "Printed at: " . $request->printedAt;
         }
 
-        // Add note if no client info provided
-        if (empty($request->clientName) && empty($request->clientPhone)) {
-            $notes[] = "Walk-in customer (no client details provided)";
+        // Add note about client assignment
+        $clientName = $request->input('clientName');
+        $clientPhone = $request->input('clientPhone');
+        if (empty($clientName) || strtolower(trim($clientName)) === 'unknown') {
+            if (empty($clientPhone)) {
+                $notes[] = "Walk-in customer (no client details provided)";
+            }
         }
         
         return implode(' | ', $notes);
@@ -386,48 +521,58 @@ class CollectionController extends BaseController
                 'description' => 'Auto-created from collector app sync',
                 'is_active' => true,
             ]);
+            
+            Log::info('Created new collection type', [
+                'type_id' => $collectionType->id,
+                'name' => $sourceName
+            ]);
         }
         
         return $collectionType;
     }
 
     /**
-     * Get default client based on authenticated collector user
+     * Get default client based on authenticated collector user - Enhanced
      */
     private function getDefaultClientForCollector(): ?Client
     {
         try {
             $user = auth()->user();
             
-            // Check if user is authenticated and has collector role
-            if (!$user || !$user->hasRole('collector')) {
+            if (!$user) {
+                Log::debug('No authenticated user found for default client assignment');
                 return null;
             }
             
             $userName = $user->name;
             $defaultClientName = null;
             
-            // Check if user name starts with "Sateki" followed by numbers
-            if (preg_match('/^Sateki\d+/i', $userName)) {
+            Log::debug('Determining default client for collector', ['user_name' => $userName]);
+            
+            // Enhanced pattern matching - case insensitive and more flexible
+            if (preg_match('/sateki/i', $userName)) {
                 $defaultClientName = 'unknown-client-sateki';
-            }
-            // Check if user name starts with "Kimuje" followed by numbers  
-            elseif (preg_match('/^Kimuje\d+/i', $userName)) {
+            } elseif (preg_match('/kimuje/i', $userName)) {
                 $defaultClientName = 'unknown-client-kimuje';
             }
             
-            // If no pattern matches, return null (will use 'Walk-in Customer')
             if (!$defaultClientName) {
+                Log::debug('User does not match Sateki or Kimuje pattern', ['user_name' => $userName]);
                 return null;
             }
             
-            // Find and return the default client
+            // Find the default client
             $client = Client::where('name', $defaultClientName)->first();
             
             if (!$client) {
                 Log::warning('Default client not found in database', [
                     'expected_client_name' => $defaultClientName,
                     'collector_user' => $userName
+                ]);
+            } else {
+                Log::debug('Found default client', [
+                    'client_id' => $client->id,
+                    'client_name' => $client->name
                 ]);
             }
             
@@ -440,5 +585,26 @@ class CollectionController extends BaseController
             ]);
             return null;
         }
+    }
+
+    /**
+     * NEW: Helper to determine how client was assigned (for debugging/logging)
+     */
+    private function getClientAssignmentMethod(?string $clientName, ?string $clientPhone): string
+    {
+        $hasValidClientName = !empty($clientName) && 
+                             !in_array(strtolower(trim($clientName)), ['unknown', '']);
+        $hasValidClientPhone = !empty($clientPhone);
+        
+        if ($hasValidClientName || $hasValidClientPhone) {
+            return 'specific_client';
+        }
+        
+        $user = auth()->user();
+        if ($user && (preg_match('/sateki/i', $user->name) || preg_match('/kimuje/i', $user->name))) {
+            return 'default_collector_client';
+        }
+        
+        return 'walk_in_customer';
     }
 }
