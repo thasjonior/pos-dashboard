@@ -406,10 +406,7 @@ class CollectionController extends BaseController
             
             // Try multiple matching strategies
             $machine = \App\Models\Machine::where(function($query) use ($collectorUsername) {
-                $query->where('name', 'like', '%' . $collectorUsername . '%')
-                      ->orWhere('name', 'like', '%' . strtolower($collectorUsername) . '%')
-                      ->orWhere('code', $collectorUsername)
-                      ->orWhere('code', strtolower($collectorUsername));
+                $query->where('name', 'like', '%' . $collectorUsername . '%');
             })->first();
             
             if ($machine) {
