@@ -43,7 +43,7 @@ class CollectionController extends BaseController
     //create a new collection
     public function store(Request $request)
     {
-        Log::info('Incoming request data:', $request->all());
+        // Log::info('Incoming request data:', $request->all());
         
         // Determine if this is sync data from collector app or regular API request
         $isSyncData = $this->isSyncDataFromCollector($request);
@@ -70,13 +70,13 @@ class CollectionController extends BaseController
      */
     private function handleCollectorSyncData(Request $request)
     {
-        Log::info('Processing collector sync data', [
-            'receipt_number' => $request->receiptNumber,
-            'client_name' => $request->input('clientName'),
-            'client_phone' => $request->input('clientPhone'),
-            'collector_username' => $request->input('metadata.collectorUsername'),
-            'total_amount' => $request->totalAmount
-        ]);
+        // Log::info('Processing collector sync data', [
+        //     'receipt_number' => $request->receiptNumber,
+        //     'client_name' => $request->input('clientName'),
+        //     'client_phone' => $request->input('clientPhone'),
+        //     'collector_username' => $request->input('metadata.collectorUsername'),
+        //     'total_amount' => $request->totalAmount
+        // ]);
 
         // Extract machine ID from metadata or try to find by collector
         $machineId = $this->extractMachineId($request);
@@ -93,10 +93,10 @@ class CollectionController extends BaseController
         ]);
 
         if ($validation->fails()) {
-            Log::error('Validation failed for collector sync data', [
-                'errors' => $validation->errors()->toArray(),
-                'receipt_number' => $request->receiptNumber
-            ]);
+            // Log::error('Validation failed for collector sync data', [
+            //     'errors' => $validation->errors()->toArray(),
+            //     'receipt_number' => $request->receiptNumber
+            // ]);
             return $this->sendError($validation->errors()->first(), 422);
         }
 
@@ -109,10 +109,10 @@ class CollectionController extends BaseController
             ->first();
         
         if ($existingCollection) {
-            Log::info('Collection already exists', [
-                'existing_id' => $existingCollection->id,
-                'receipt_number' => $request->receiptNumber
-            ]);
+            // Log::info('Collection already exists', [
+            //     'existing_id' => $existingCollection->id,
+            //     'receipt_number' => $request->receiptNumber
+            // ]);
             return $this->sendResponse(new CollectionResource($existingCollection), 'Collection already exists');
         }
 
@@ -150,35 +150,35 @@ class CollectionController extends BaseController
                     ]);
                     
                 } catch (\Exception $e) {
-                    Log::error('Failed to create collection item', [
-                        'collection_id' => $collection->id,
-                        'item_index' => $index,
-                        'item' => $item,
-                        'error' => $e->getMessage()
-                    ]);
+                    // Log::error('Failed to create collection item', [
+                    //     'collection_id' => $collection->id,
+                    //     'item_index' => $index,
+                    //     'item' => $item,
+                    //     'error' => $e->getMessage()
+                    // ]);
                     throw $e; // Re-throw to trigger rollback
                 }
             }
 
-            Log::info('Collection synced successfully', [
-                'collection_id' => $collection->id,
-                'client_id' => $client ? $client->id : null,
-                'client_name' => $clientDisplayName,
-                'machine_id' => $machineId,
-                'assignment_method' => $this->getClientAssignmentMethod(
-                    $request->input('clientName'), 
-                    $request->input('clientPhone')
-                )
-            ]);
+            // Log::info('Collection synced successfully', [
+            //     'collection_id' => $collection->id,
+            //     'client_id' => $client ? $client->id : null,
+            //     'client_name' => $clientDisplayName,
+            //     'machine_id' => $machineId,
+            //     'assignment_method' => $this->getClientAssignmentMethod(
+            //         $request->input('clientName'), 
+            //         $request->input('clientPhone')
+            //     )
+            // ]);
 
             return $this->sendResponse(new CollectionResource($collection), 'Collection synced successfully');
 
         } catch (\Exception $e) {
-            Log::error('Failed to create collection from sync data', [
-                'error' => $e->getMessage(),
-                'receipt_number' => $request->receiptNumber,
-                'trace' => $e->getTraceAsString()
-            ]);
+            // Log::error('Failed to create collection from sync data', [
+            //     'error' => $e->getMessage(),
+            //     'receipt_number' => $request->receiptNumber,
+            //     'trace' => $e->getTraceAsString()
+            // ]);
             return $this->sendError('Failed to create collection: ' . $e->getMessage(), 500);
         }
     }
@@ -204,7 +204,7 @@ class CollectionController extends BaseController
         ]);
 
         if ($validation->fails()) {
-            Log::error("ERROR VALIDATION".$validation->errors()->first());
+            // Log::error("ERROR VALIDATION".$validation->errors()->first());
             return $this->sendError($validation->errors()->first(), 422);
         }
 
@@ -262,12 +262,12 @@ class CollectionController extends BaseController
         $hasValidClientPhone = !empty($clientPhone) && 
                               trim($clientPhone) !== '';
 
-        Log::debug('Determining client assignment', [
-            'client_name' => $clientName,
-            'client_phone' => $clientPhone,
-            'has_valid_name' => $hasValidClientName,
-            'has_valid_phone' => $hasValidClientPhone
-        ]);
+        // Log::debug('Determining client assignment', [
+        //     'client_name' => $clientName,
+        //     'client_phone' => $clientPhone,
+        //     'has_valid_name' => $hasValidClientName,
+        //     'has_valid_phone' => $hasValidClientPhone
+        // ]);
 
         // Case 1: Valid client information provided - create/get specific client
         if ($hasValidClientName || $hasValidClientPhone) {
@@ -275,13 +275,13 @@ class CollectionController extends BaseController
             $client = $this->getOrCreateClientFromSync($clientInfo, $clientPhone);
             
             if ($client) {
-                Log::debug('Using specific client', ['client_id' => $client->id, 'client_name' => $client->name]);
+                // Log::debug('Using specific client', ['client_id' => $client->id, 'client_name' => $client->name]);
                 return $client;
             }
         }
 
         // Case 2: No valid client info - use default client based on collector
-        Log::debug('No valid client info provided, using default collector client');
+        // Log::debug('No valid client info provided, using default collector client');
         $defaultClient = $this->getDefaultClientForCollector();
         
         if ($defaultClient) {
@@ -293,7 +293,7 @@ class CollectionController extends BaseController
         }
 
         // Case 3: No default client found - return null (will use 'Walk-in Customer')
-        Log::debug('No default client could be determined');
+        // Log::debug('No default client could be determined');
         return null;
     }
 
@@ -361,11 +361,11 @@ class CollectionController extends BaseController
                     'description' => $clientInfo['full_description'],
                 ]);
                 
-                Log::info('Created new client from sync', [
-                    'client_id' => $client->id,
-                    'name' => $client->name,
-                    'phone' => $client->phone
-                ]);
+                // Log::info('Created new client from sync', [
+                //     'client_id' => $client->id,
+                //     'name' => $client->name,
+                //     'phone' => $client->phone
+                // ]);
             } elseif ($client) {
                 // Update existing client with latest information if provided
                 $updateData = [];
@@ -374,17 +374,17 @@ class CollectionController extends BaseController
                 
                 if (!empty($updateData)) {
                     $client->update($updateData);
-                    Log::debug('Updated existing client', ['client_id' => $client->id]);
+                    // Log::debug('Updated existing client', ['client_id' => $client->id]);
                 }
             }
 
             return $client;
         } catch (\Exception $e) {
-            Log::error('Error creating/updating client from sync', [
-                'error' => $e->getMessage(),
-                'client_info' => $clientInfo,
-                'phone' => $phone
-            ]);
+            // Log::error('Error creating/updating client from sync', [
+            //     'error' => $e->getMessage(),
+            //     'client_info' => $clientInfo,
+            //     'phone' => $phone
+            // ]);
             return null;
         }
     }
@@ -410,10 +410,10 @@ class CollectionController extends BaseController
             })->first();
             
             if ($machine) {
-                Log::debug('Found machine by collector username', [
-                    'machine_id' => $machine->id,
-                    'collector_username' => $collectorUsername
-                ]);
+                // Log::debug('Found machine by collector username', [
+                //     'machine_id' => $machine->id,
+                //     'collector_username' => $collectorUsername
+                // ]);
                 return $machine->id;
             }
             
@@ -426,19 +426,19 @@ class CollectionController extends BaseController
                 })->first();
                 
                 if ($userMachine) {
-                    Log::debug('Found machine by authenticated user', [
-                        'machine_id' => $userMachine->id,
-                        'user_name' => $user->name
-                    ]);
+                    // Log::debug('Found machine by authenticated user', [
+                    //     'machine_id' => $userMachine->id,
+                    //     'user_name' => $user->name
+                    // ]);
                     return $userMachine->id;
                 }
             }
         }
 
-        Log::warning('Could not determine machine_id', [
-            'collector_username' => $metadata['collectorUsername'] ?? 'not_provided',
-            'authenticated_user' => auth()->user()?->name ?? 'not_authenticated'
-        ]);
+        // Log::warning('Could not determine machine_id', [
+        //     'collector_username' => $metadata['collectorUsername'] ?? 'not_provided',
+        //     'authenticated_user' => auth()->user()?->name ?? 'not_authenticated'
+        // ]);
         
         return null;
     }
@@ -452,10 +452,10 @@ class CollectionController extends BaseController
             $date = \Carbon\Carbon::parse($createdAt);
             return $date->format('Y-m-d');
         } catch (\Exception $e) {
-            Log::warning('Failed to parse collection date, using current date', [
-                'createdAt' => $createdAt,
-                'error' => $e->getMessage()
-            ]);
+            // Log::warning('Failed to parse collection date, using current date', [
+            //     'createdAt' => $createdAt,
+            //     'error' => $e->getMessage()
+            // ]);
             return now()->format('Y-m-d');
         }
     }
@@ -519,10 +519,10 @@ class CollectionController extends BaseController
                 'is_active' => true,
             ]);
             
-            Log::info('Created new collection type', [
-                'type_id' => $collectionType->id,
-                'name' => $sourceName
-            ]);
+            // Log::info('Created new collection type', [
+            //     'type_id' => $collectionType->id,
+            //     'name' => $sourceName
+            // ]);
         }
         
         return $collectionType;
@@ -537,14 +537,14 @@ class CollectionController extends BaseController
             $user = auth()->user();
             
             if (!$user) {
-                Log::debug('No authenticated user found for default client assignment');
+                // Log::debug('No authenticated user found for default client assignment');
                 return null;
             }
             
             $userName = $user->name;
             $defaultClientName = null;
             
-            Log::debug('Determining default client for collector', ['user_name' => $userName]);
+            // Log::debug('Determining default client for collector', ['user_name' => $userName]);
             
             // Enhanced pattern matching - case insensitive and more flexible
             if (preg_match('/sateki/i', $userName)) {
@@ -554,7 +554,7 @@ class CollectionController extends BaseController
             }
             
             if (!$defaultClientName) {
-                Log::debug('User does not match Sateki or Kimuje pattern', ['user_name' => $userName]);
+                // Log::debug('User does not match Sateki or Kimuje pattern', ['user_name' => $userName]);
                 return null;
             }
             
@@ -562,24 +562,24 @@ class CollectionController extends BaseController
             $client = Client::where('name', $defaultClientName)->first();
             
             if (!$client) {
-                Log::warning('Default client not found in database', [
-                    'expected_client_name' => $defaultClientName,
-                    'collector_user' => $userName
-                ]);
+                // Log::warning('Default client not found in database', [
+                //     'expected_client_name' => $defaultClientName,
+                //     'collector_user' => $userName
+                // ]);
             } else {
-                Log::debug('Found default client', [
-                    'client_id' => $client->id,
-                    'client_name' => $client->name
-                ]);
+                // Log::debug('Found default client', [
+                //     'client_id' => $client->id,
+                //     'client_name' => $client->name
+                // ]);
             }
             
             return $client;
             
         } catch (\Exception $e) {
-            Log::error('Error getting default client for collector', [
-                'error' => $e->getMessage(),
-                'user_id' => auth()->id() ?? 'not_authenticated'
-            ]);
+            // Log::error('Error getting default client for collector', [
+            //     'error' => $e->getMessage(),
+            //     'user_id' => auth()->id() ?? 'not_authenticated'
+            // ]);
             return null;
         }
     }

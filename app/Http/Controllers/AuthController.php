@@ -18,7 +18,7 @@ class AuthController extends BaseController
      */
     public function login(Request $request)
     {
-        Log::info('Login attempt:', $request->only(['email', 'machine_name']));
+        // Log::info('Login attempt:', $request->only(['email', 'machine_name']));
 
         // Determine login type based on provided fields
         $isAdminLogin = $request->has('email');
@@ -52,9 +52,9 @@ class AuthController extends BaseController
             $user = User::where('email', $request->email)
                 ->where('role', 'admin')
                 ->first();
-            Log::info($user);
+            // Log::info($user);
             if (!$user || !Hash::check($request->password, $user->password)) {
-                Log::warning('Admin login failed:', ['email' => $request->email]);
+                // Log::warning('Admin login failed:', ['email' => $request->email]);
                 return $this->sendError('Invalid credentials', [], 401);
             }
 
@@ -75,11 +75,11 @@ class AuthController extends BaseController
                 'token' => $token,
             ];
 
-            Log::info('Admin login successful:', ['user_id' => $user->id]);
+            // Log::info('Admin login successful:', ['user_id' => $user->id]);
             return $this->sendResponse($response, 'Admin login successful');
 
         } catch (\Exception $e) {
-            Log::error('Admin login error:', ['error' => $e->getMessage()]);
+            // Log::error('Admin login error:', ['error' => $e->getMessage()]);
             return $this->sendError('Login failed', [], 500);
         }
     }
@@ -102,9 +102,9 @@ class AuthController extends BaseController
             // Find machine
             $user = User::where('machine_name', $request->machine_name)
                 ->first();
-            Log::info($user);
+            // Log::info($user);
             if (!$user  || !Hash::check($request->password, $user->password)) {
-                Log::warning('Collector login failed:', ['machine_name' => $request->machine_name]);
+                // Log::warning('Collector login failed:', ['machine_name' => $request->machine_name]);
                 return $this->sendError('Invalid credentials', [], 401);
             }
 
@@ -132,11 +132,11 @@ class AuthController extends BaseController
                 'token' => $token,
             ];
 
-            Log::info('Collector login successful:', ['machine_id' => $machine->id]);
+            // Log::info('Collector login successful:', ['machine_id' => $machine->id]);
             return $this->sendResponse($response, 'Collector login successful');
 
         } catch (\Exception $e) {
-            Log::error('Collector login error:', ['error' => $e->getMessage()]);
+            // Log::error('Collector login error:', ['error' => $e->getMessage()]);
             return $this->sendError('Login failed', [], 500);
         }
     }
@@ -154,7 +154,7 @@ class AuthController extends BaseController
                 $request->user()->currentAccessToken()->delete();
                 
                 $userType = $user instanceof User ? 'admin' : 'collector';
-                Log::info("$userType logout successful:", ['user_id' => $user->id]);
+                // Log::info("$userType logout successful:", ['user_id' => $user->id]);
                 
                 return $this->sendResponse([], 'Logout successful');
             }
@@ -162,7 +162,7 @@ class AuthController extends BaseController
             return $this->sendError('User not authenticated', [], 401);
 
         } catch (\Exception $e) {
-            Log::error('Logout error:', ['error' => $e->getMessage()]);
+            // Log::error('Logout error:', ['error' => $e->getMessage()]);
             return $this->sendError('Logout failed', [], 500);
         }
     }
@@ -215,7 +215,7 @@ class AuthController extends BaseController
             return $this->sendResponse($response, 'Profile retrieved successfully');
 
         } catch (\Exception $e) {
-            Log::error('Profile error:', ['error' => $e->getMessage()]);
+            // Log::error('Profile error:', ['error' => $e->getMessage()]);
             return $this->sendError('Failed to retrieve profile', [], 500);
         }
     }
@@ -245,7 +245,7 @@ class AuthController extends BaseController
             ], 'Token refreshed successfully');
 
         } catch (\Exception $e) {
-            Log::error('Token refresh error:', ['error' => $e->getMessage()]);
+            // Log::error('Token refresh error:', ['error' => $e->getMessage()]);
             return $this->sendError('Failed to refresh token', [], 500);
         }
     }

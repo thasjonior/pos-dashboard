@@ -67,7 +67,7 @@ Route::post('validate-machine', 'App\Http\Controllers\MachineController@validate
 
 // Health check (existing - improved)
 Route::get('health', function(){
-    Log::info("API Health Check - PINGED");
+    // Log::info("API Health Check - PINGED");
     return response()->json([
         'status' => 'ok',
         'timestamp' => now()->toISOString(),

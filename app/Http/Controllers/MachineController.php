@@ -29,7 +29,7 @@ class MachineController extends BaseController
 
         // Get machine data from request
         $machine = $request->all();
-        Log::info($request->all());
+        // Log::info($request->all());
 
         try {
             // Get or create collector using BaseService instance
