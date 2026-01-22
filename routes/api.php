@@ -3,6 +3,7 @@
 use App\Http\Controllers\DashboardController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DeviceCommandController;
 use Illuminate\Support\Facades\Log;
 
 /*
@@ -47,6 +48,14 @@ Route::prefix('dashboard')->group(function () {
 
 // Machine CRUD (existing)
 Route::apiResource('machines', 'App\Http\Controllers\MachineController');
+
+
+
+Route::prefix('device')->group(function () {
+    Route::post('/register', [DeviceCommandController::class, 'register']);
+    Route::get('/status/{deviceId}', [DeviceCommandController::class, 'status']);
+    Route::post('/wipe-confirmed', [DeviceCommandController::class, 'wipeConfirmed']);
+});
 
 // Machine validation (existing)
 Route::post('validate-machine', 'App\Http\Controllers\MachineController@validateMachine');

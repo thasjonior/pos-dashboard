@@ -31,4 +31,16 @@ class Machine extends Model
     {
         return $this->belongsTo(Company::class, 'company_id');
     }
+
+    //device commands
+    public function deviceCommand()
+    {
+        return $this->hasOne(DeviceCommand::class); 
+    }
+
+    //should wipe data
+    public function shouldWipeData(): bool
+    {
+        return $this->deviceCommand?->wipe_command ?? false;    
+    }
 }
