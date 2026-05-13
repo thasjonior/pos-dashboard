@@ -52,14 +52,14 @@ class DeviceCommandController extends Controller
     {
         $validated = $request->validate([
             'device_id' => 'required|string',
-            'wipe_requested_at' => 'required|string',
         ]);
 
         DeviceCommand::where('device_id', $validated['device_id'])
+            ->whereNull('wipe_completed_at')
             ->update([
-                'wipe_command' => false,
-                'wipe_requested_at' => $validated['wipe_requested_at'],
-                'is_active' => false,
+                'wipe_command'      => false,
+                'wipe_completed_at' => now(),
+                'is_active'         => false,
             ]);
 
         return response()->json(['success' => true]);

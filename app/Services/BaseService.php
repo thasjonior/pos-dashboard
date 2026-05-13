@@ -603,6 +603,61 @@ class BaseService
         return $trendData;
     }
 
+    /**
+     * Build a summary (trend, amount, percent_difference) for a given set of machine IDs.
+     * Pass null for $machineIds to aggregate across all machines (main summary).
+     *
+     * @param TimeRange   $time
+     * @param int[]|null  $machineIds
+     */
+    public static function getSummaryForMachines(TimeRange $time, ?array $machineIds): array
+    {
+        $totalAmount    = self::getCollectionTotalForMachines($time, $machineIds);
+        $prevTimeRange  = $time->getPreviousTimeRange();
+        $prevAmount     = $prevTimeRange ? self::getCollectionTotalForMachines($prevTimeRange, $machineIds) : 0;
+
+        $diff  = $totalAmount - $prevAmount;
+        $trend = "same";
+        if ($diff > 0) {
+            $trend = "up";
+        } elseif ($diff < 0) {
+            $trend = "down";
+        }
+
+        if ($prevAmount != 0) {
+            $percentDifference = round((($totalAmount - $prevAmount) / $prevAmount) * 100, 2);
+        } elseif ($totalAmount > 0) {
+            $percentDifference = 100;
+        } else {
+            $percentDifference = 0;
+        }
+
+        return [
+            "trend"              => $trend,
+            "amount"             => self::formatShortNumber($totalAmount),
+            "previous_amount"    => self::formatShortNumber($prevAmount),
+            "percent_difference" => $percentDifference . "%",
+        ];
+    }
+
+    /**
+     * Sum collection amounts for the given time range filtered by machine IDs.
+     * Pass null for $machineIds to include all machines.
+     *
+     * @param TimeRange  $time
+     * @param int[]|null $machineIds
+     */
+    private static function getCollectionTotalForMachines(TimeRange $time, ?array $machineIds): float
+    {
+        $start = $time->getStartDate()->format("Y-m-d");
+        $end   = $time->getEndDate()->format("Y-m-d");
+
+        return (float) Collection::join("machines", "collections.machine_id", "=", "machines.id")
+            ->when($machineIds !== null, fn ($q) => $q->whereIn("machines.id", $machineIds))
+            ->whereBetween("collections.date", [$start, $end])
+            ->sum("collections.amount");
+    }
+
     public static function getCollectionTotal(TimeRange $time, $companyId)
 {
     $start = $time->getStartDate()->format('Y-m-d');
@@ -616,43 +671,6 @@ class BaseService
         ->sum('collections.amount');
     return $collection;
 }
-
-    public static function getSummary(TimeRange $time, CompanyType $companyType)
-    {
-        // Get total for current month
-        $totalAmount = BaseService::getCollectionTotal($time, $companyType->getCompanyID());
-
-        // Get previous month total (fixed the bug here)
-        $prevAmount = BaseService::getCollectionTotal($time->getPreviousTimeRange(), $companyType->getCompanyID());
-
-        // Get difference
-        $diff = $totalAmount - $prevAmount;
-
-        // Get trend [up, down, same]
-        $trend = 'same';
-        if ($diff > 0) {
-            $trend = 'up';
-        } elseif ($diff < 0) {
-            $trend = 'down';
-        }
-
-        // Calculate percent difference
-        $percentDifference = 0;
-        if ($prevAmount != 0) {
-            $percentDifference = (($totalAmount - $prevAmount) / $prevAmount) * 100;
-            $percentDifference = round($percentDifference, 2); // Round to 2 decimal places
-        } elseif ($totalAmount > 0) {
-            // If previous amount was 0 but current is positive, it's 100% increase
-            $percentDifference = 100;
-        }
-
-        return [
-            "trend" => $trend,
-            "amount" => BaseService::formatShortNumber($totalAmount),
-            "previous_amount" => BaseService::formatShortNumber($prevAmount),
-            "percent_difference" => strval($percentDifference)  . "%"
-        ];
-    }
 
     public static function formatShortNumber($number, int $decimals = 1): string
     {
@@ -686,11 +704,6 @@ class BaseService
         return rtrim(rtrim($number, '0'), '.');
     }
 
-    public static function countMachine($companyId)
-    {
-        return Machine::where('company_id', $companyId->getCompanyID())->count();
-    }
-
     public static function getTransactionsCount(TimeRange $time, $companyId = Null)
     {
         $start = $time->getStartDate()->format('Y-m-d');
@@ -704,23 +717,5 @@ class BaseService
             ->count();
 
         return $transactions;
-    }
-}
-
-
-
-enum CompanyType: string
-{
-    case MAIN = 'main';
-    case SATEKI = 'sateki';
-    case KIMUJE = 'kimuje';
-
-    public function getCompanyID(): int
-    {
-        return match ($this) {
-            self::MAIN => 0,
-            self::SATEKI => 1,
-            self::KIMUJE => 2,
-        };
     }
 }

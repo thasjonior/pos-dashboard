@@ -1,8 +1,8 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Models\Company;
 use App\Services\BaseService;
-use App\Services\CompanyType;
 use App\Services\TimeRange;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
@@ -19,30 +19,34 @@ class DashboardController extends Controller
 public function index(Request $request)
 {
     try {
-        // Get machine IDs from request or user's company
-        $machineIds = $this->getMachineIds($request);
-        
-        // Get time range from request or use today as default
         $timeParam = $request->input('time', 'today');
         $timeRange = $this->mapTimeParamToEnum($timeParam);
-        
-        // Get date from request or use today (keeping existing functionality)
-        $date = $request->input('date') ? Carbon::parse($request->input('date')) : Carbon::today();
 
-        $response = [
-            'success' => true,
-            'data' => [
-                'main' => BaseService::getSummary($timeRange, CompanyType::MAIN),
-                'sateki' => BaseService::getSummary($timeRange, CompanyType::SATEKI),
-                'kimuje' => BaseService::getSummary($timeRange, CompanyType::KIMUJE),
-                'sateki_machine_count' => BaseService::countMachine(CompanyType::SATEKI),
-                'Kimuje_machine_count' => BaseService::countMachine(CompanyType::KIMUJE),
-                'today_total_transactions' => BaseService::getTransactionsCount($timeRange)
-            ],
-            'message' => "Success"
+        $companies = Company::with('machines')->get();
+
+        // Start with main aggregate and transaction count
+        $data = [
+            'main'                     => BaseService::getSummaryForMachines($timeRange, null),
+            'today_total_transactions' => BaseService::getTransactionsCount($timeRange),
         ];
 
-        return response()->json($response);
+        // Backward-compat: one slug-keyed summary + machine_count per company
+        foreach ($companies as $company) {
+            $machineIds = $company->machines->pluck('id')->all();
+            $data[$company->slug]                   = BaseService::getSummaryForMachines($timeRange, $machineIds);
+            $data["{$company->slug}_machine_count"] = $company->machines->count();
+        }
+
+        // New shape: structured array for new mobile builds and admin dashboard
+        $data['companies'] = $companies->map(fn (Company $c) => [
+            'id'            => $c->id,
+            'slug'          => $c->slug,
+            'name'          => $c->name,
+            'summary'       => BaseService::getSummaryForMachines($timeRange, $c->machines->pluck('id')->all()),
+            'machine_count' => $c->machines->count(),
+        ])->values();
+
+        return response()->json(['success' => true, 'data' => $data, 'message' => 'Success']);
 
     } catch (\Exception $e) {
         return response()->json([

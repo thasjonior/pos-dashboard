@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Validator;
 use App\Http\Controllers\BaseController;
 use App\Http\Resources\CollectionResource;
 use App\Models\Client;
+use App\Models\Company;
+use App\Models\Machine;
 
 class CollectionController extends BaseController
 {
@@ -390,56 +392,50 @@ class CollectionController extends BaseController
     }
 
     /**
-     * Extract machine ID from request - Enhanced
+     * Extract machine ID from request.
+     *
+     * Resolution order:
+     *  1. machine_id provided directly in the request.
+     *  2. Exact Machine name match on metadata.collectorUsername.
+     *  3. Authenticated user's own machine via machine_name.
      */
     private function extractMachineId(Request $request): ?int
     {
-        // First check if machine_id is directly provided
         if ($request->has('machine_id') && !empty($request->machine_id)) {
+            Log::debug('Machine resolved via request machine_id', ['machine_id' => $request->machine_id]);
             return $request->machine_id;
         }
 
-        // Try to extract from metadata
-        $metadata = $request->input('metadata', []);
-        if (isset($metadata['collectorUsername'])) {
-            $collectorUsername = $metadata['collectorUsername'];
-            
-            // Try multiple matching strategies
-            $machine = \App\Models\Machine::where(function($query) use ($collectorUsername) {
-                $query->where('name', 'like', '%' . $collectorUsername . '%');
-            })->first();
-            
+        $collectorUsername = $request->input('metadata.collectorUsername');
+
+        if ($collectorUsername) {
+            $machine = Machine::where('name', $collectorUsername)->first();
             if ($machine) {
-                // Log::debug('Found machine by collector username', [
-                //     'machine_id' => $machine->id,
-                //     'collector_username' => $collectorUsername
-                // ]);
+                Log::debug('Machine resolved via exact collectorUsername match', [
+                    'machine_id' => $machine->id,
+                    'collector_username' => $collectorUsername,
+                ]);
                 return $machine->id;
-            }
-            
-            // Fallback: try to find by authenticated user
-            $user = auth()->user();
-            if ($user) {
-                $userMachine = \App\Models\Machine::where(function($query) use ($user) {
-                    $query->where('user_id', $user->id)
-                          ->orWhere('name', 'like', '%' . $user->name . '%');
-                })->first();
-                
-                if ($userMachine) {
-                    // Log::debug('Found machine by authenticated user', [
-                    //     'machine_id' => $userMachine->id,
-                    //     'user_name' => $user->name
-                    // ]);
-                    return $userMachine->id;
-                }
             }
         }
 
-        // Log::warning('Could not determine machine_id', [
-        //     'collector_username' => $metadata['collectorUsername'] ?? 'not_provided',
-        //     'authenticated_user' => auth()->user()?->name ?? 'not_authenticated'
-        // ]);
-        
+        $user = auth()->user();
+        if ($user && !empty($user->machine_name)) {
+            $machine = Machine::where('name', $user->machine_name)->first();
+            if ($machine) {
+                Log::debug('Machine resolved via authenticated user machine_name', [
+                    'machine_id' => $machine->id,
+                    'machine_name' => $user->machine_name,
+                ]);
+                return $machine->id;
+            }
+        }
+
+        Log::warning('Could not resolve machine_id', [
+            'collector_username' => $collectorUsername ?? 'not_provided',
+            'authenticated_user' => $user?->name ?? 'not_authenticated',
+        ]);
+
         return null;
     }
 
@@ -529,79 +525,76 @@ class CollectionController extends BaseController
     }
 
     /**
-     * Get default client based on authenticated collector user - Enhanced
+     * Resolve the fallback client for a company's collectors.
+     *
+     * Uses the company slug to derive the client name, so any future company
+     * gets its fallback auto-created on first sync without code changes.
      */
-    private function getDefaultClientForCollector(): ?Client
+    private function resolveUnknownClientForCompany(Company $company): Client
     {
-        try {
-            $user = auth()->user();
-            
-            if (!$user) {
-                // Log::debug('No authenticated user found for default client assignment');
-                return null;
-            }
-            
-            $userName = $user->name;
-            $defaultClientName = null;
-            
-            // Log::debug('Determining default client for collector', ['user_name' => $userName]);
-            
-            // Enhanced pattern matching - case insensitive and more flexible
-            if (preg_match('/sateki/i', $userName)) {
-                $defaultClientName = 'unknown-client-sateki';
-            } elseif (preg_match('/kimuje/i', $userName)) {
-                $defaultClientName = 'unknown-client-kimuje';
-            }
-            
-            if (!$defaultClientName) {
-                // Log::debug('User does not match Sateki or Kimuje pattern', ['user_name' => $userName]);
-                return null;
-            }
-            
-            // Find the default client
-            $client = Client::where('name', $defaultClientName)->first();
-            
-            if (!$client) {
-                // Log::warning('Default client not found in database', [
-                //     'expected_client_name' => $defaultClientName,
-                //     'collector_user' => $userName
-                // ]);
-            } else {
-                // Log::debug('Found default client', [
-                //     'client_id' => $client->id,
-                //     'client_name' => $client->name
-                // ]);
-            }
-            
-            return $client;
-            
-        } catch (\Exception $e) {
-            // Log::error('Error getting default client for collector', [
-            //     'error' => $e->getMessage(),
-            //     'user_id' => auth()->id() ?? 'not_authenticated'
-            // ]);
-            return null;
-        }
+        $fallbackName = "unknown-client-{$company->slug}";
+
+        return Client::firstOrCreate(
+            ['name' => $fallbackName],
+            [
+                'phone'       => null,
+                'address'     => "Default client for {$company->name} collectors",
+                'description' => "Auto-generated default client for {$company->name} collector operations",
+            ]
+        );
     }
 
     /**
-     * NEW: Helper to determine how client was assigned (for debugging/logging)
+     * Get default client for the authenticated collector via machine → company → fallback.
+     */
+    private function getDefaultClientForCollector(): ?Client
+    {
+        $user = auth()->user();
+
+        if (!$user || empty($user->machine_name)) {
+            return null;
+        }
+
+        $machine = Machine::where('name', $user->machine_name)->with('company')->first();
+
+        if (!$machine || !$machine->company) {
+            Log::debug('No machine/company found for default client resolution', [
+                'machine_name' => $user->machine_name,
+            ]);
+            return null;
+        }
+
+        $client = $this->resolveUnknownClientForCompany($machine->company);
+
+        Log::debug('Resolved default client', [
+            'client_id'    => $client->id,
+            'client_name'  => $client->name,
+            'company_slug' => $machine->company->slug,
+        ]);
+
+        return $client;
+    }
+
+    /**
+     * Determine how the client was assigned (for logging/debugging).
      */
     private function getClientAssignmentMethod(?string $clientName, ?string $clientPhone): string
     {
-        $hasValidClientName = !empty($clientName) && 
-                             !in_array(strtolower(trim($clientName)), ['unknown', '']);
+        $hasValidClientName  = !empty($clientName) && !in_array(strtolower(trim($clientName)), ['unknown', '']);
         $hasValidClientPhone = !empty($clientPhone);
-        
+
         if ($hasValidClientName || $hasValidClientPhone) {
             return 'specific_client';
         }
-        
+
         $user = auth()->user();
-        if ($user && (preg_match('/sateki/i', $user->name) || preg_match('/kimuje/i', $user->name))) {
-            return 'default_collector_client';
+        if ($user && !empty($user->machine_name)) {
+            $hasMachine = Machine::where('name', $user->machine_name)->exists();
+            if ($hasMachine) {
+                return 'default_collector_client';
+            }
         }
-        
+
         return 'walk_in_customer';
     }
 }

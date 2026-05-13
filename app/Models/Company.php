@@ -11,6 +11,17 @@ class Company extends Model
     use HasFactory;
     protected $fillable = [
         'name',
-        'location'
+        'location',
+        'slug',
     ];
+
+    public function machines()
+    {
+        return $this->hasMany(Machine::class);
+    }
+
+    public static function findBySlug(string $slug): ?self
+    {
+        return static::where('slug', $slug)->first();
+    }
 }
