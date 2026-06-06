@@ -16,6 +16,14 @@ class DeviceCommand extends Model
         'wipe_completed_at',
     ];
 
+    protected $casts = [
+        'wipe_requested_at' => 'datetime',
+        'wipe_completed_at' => 'datetime',
+        'last_seen_at'      => 'datetime',
+        'wipe_command'      => 'boolean',
+        'is_active'         => 'boolean',
+    ];
+
     public function machine()
     {
         return $this->belongsTo(Machine::class);

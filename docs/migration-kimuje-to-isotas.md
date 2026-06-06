@@ -15,7 +15,7 @@ New operations are registered under `ISOTAS` (slug: `isotas`). When a collector 
 
 ## Pre-flight
 
-1. Log in to the admin dashboard at `https://pos.hype.co.tz/admin/dashboard` as `super_admin`.
+1. Log in to the admin dashboard at `https://dev.pos.hype.co.tz/admin/dashboard` as `super_admin`.
 2. Confirm the **ISOTAS** company exists at `/admin/companies`. If not, create it:
    - Name: `ISOTAS` (or full legal name)
    - Slug: `isotas`
